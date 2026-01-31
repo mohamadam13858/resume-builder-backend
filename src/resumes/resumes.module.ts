@@ -1,12 +1,14 @@
+// src/resumes/resumes.module.ts
 import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { ResumesService } from './resumes.service';
-import { ResumesController } from './resumes.controller';
-import { PublicResumesController } from './resumes.controller';
+import { ResumesController, PublicResumesController } from './resumes.controller';
 import { Resume } from './resume.model';
 
 @Module({
-  imports: [SequelizeModule.forFeature([Resume])],
+  imports: [
+    SequelizeModule.forFeature([Resume]),
+  ],
   controllers: [ResumesController, PublicResumesController],
   providers: [ResumesService],
   exports: [ResumesService],

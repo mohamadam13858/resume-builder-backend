@@ -1,6 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { SequelizeModule } from '@nestjs/sequelize';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
+import { ResumesModule } from './resumes/resumes.module';
 import { User } from './users/user.model';
 import { Resume } from './resumes/resume.model';
 
@@ -23,25 +28,14 @@ import { Resume } from './resumes/resume.model';
         models: [User, Resume],
         autoLoadModels: true,
         synchronize: configService.get('NODE_ENV') === 'development',
-        pool: {
-          max: 10,
-          min: 0,
-          acquire: 30000,
-          idle: 10000,
-        },
-        logging: configService.get('NODE_ENV') === 'development' 
-          ? console.log 
-          : false,
-        dialectOptions: {
-          useUTC: false,
-          dateStrings: true,
-          typeCast: true,
-        },
-        timezone: '+03:30', 
+        logging: configService.get('NODE_ENV') === 'development' ? console.log : false,
       }),
     }),
-    
-    SequelizeModule.forFeature([User, Resume]),
+    AuthModule,
+    UsersModule,
+    ResumesModule,
   ],
+  controllers: [AppController],
+  providers: [AppService],
 })
 export class AppModule {}

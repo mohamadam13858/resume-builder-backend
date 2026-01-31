@@ -1,4 +1,4 @@
-// src/users/user.model.ts
+
 import {
   Table,
   Column,
@@ -18,9 +18,9 @@ import { Resume } from '../resumes/resume.model';
 @Table({
   tableName: 'users',
   timestamps: true,
-  underscored: true, 
+  underscored: true,
 })
-export class User extends Model<User> {
+export class User extends Model {
   // @PrimaryKey
   // @AutoIncrement
   // @Column({
@@ -82,27 +82,6 @@ export class User extends Model<User> {
   })
   profileImage?: string;
 
-  @Column({
-    type: DataType.STRING(100),
-    allowNull: true,
-    field: 'linkedin_url',
-  })
-  linkedinUrl?: string;
-
-  @Column({
-    type: DataType.STRING(100),
-    allowNull: true,
-    field: 'github_url',
-  })
-  githubUrl?: string;
-
-  @Column({
-    type: DataType.BOOLEAN,
-    defaultValue: false,
-    field: 'is_verified',
-  })
-  isVerified: boolean;
-
   @HasMany(() => Resume)
   resumes: Resume[];
 
@@ -118,17 +97,15 @@ export class User extends Model<User> {
   // })
   // updatedAt: Date;
 
-  
-  @BeforeCreate
-  @BeforeUpdate
-  static async hashPassword(user: User) {
-    if (user.changed('password')) {
-      const salt = await bcrypt.genSalt(10);
-      user.password = await bcrypt.hash(user.password, salt);
-    }
-  }
 
   async comparePassword(password: string): Promise<boolean> {
     return bcrypt.compare(password, this.password);
+  }
+
+
+  toJSON() {
+    const values = Object.assign({}, this.get());
+    delete values.password;
+    return values;
   }
 }
