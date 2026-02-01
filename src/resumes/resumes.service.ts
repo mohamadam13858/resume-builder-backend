@@ -1,4 +1,3 @@
-// src/resumes/resumes.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Resume } from './resume.model';
@@ -14,7 +13,7 @@ export class ResumesService {
     private resumeModel: typeof Resume,
   ) {}
 
-  // ایجاد رزو
+
   async create(userId: number, createResumeDto: CreateResumeDto): Promise<ResumeResponseDto> {
     const resumeData = {
       userId,
@@ -29,7 +28,7 @@ export class ResumesService {
     return new ResumeResponseDto(resume.toJSON());
   }
 
-  // دریافت همه رزومه‌های کاربر
+  
   async findAll(
     userId: number,
     options?: {
@@ -67,7 +66,6 @@ export class ResumesService {
     };
   }
 
-  // دریافت یک رزومه
   async findOne(id: number, userId: number): Promise<ResumeResponseDto> {
     const resume = await this.resumeModel.findOne({
       where: { id, userId },
@@ -77,13 +75,12 @@ export class ResumesService {
       throw new NotFoundException(`Resume with ID ${id} not found`);
     }
 
-    // افزایش view count
     await (resume as any).markAsViewed();
 
     return new ResumeResponseDto(resume.toJSON());
   }
 
-  // آپدیت رزومه
+
   async update(
     id: number,
     userId: number,
@@ -102,7 +99,7 @@ export class ResumesService {
     return new ResumeResponseDto(resume.toJSON());
   }
 
-  // حذف رزومه (soft delete)
+
   async remove(id: number, userId: number): Promise<void> {
     const resume = await this.resumeModel.findOne({
       where: { id, userId },
@@ -115,7 +112,7 @@ export class ResumesService {
     await resume.destroy();
   }
 
-  // جستجوی رزومه‌ها (ساده شده)
+
   async search(userId: number, query: string): Promise<ResumeResponseDto[]> {
     const resumes = await this.resumeModel.findAll({
       where: {
@@ -129,7 +126,7 @@ export class ResumesService {
     return resumes.map(resume => new ResumeResponseDto(resume.toJSON()));
   }
 
-  // دریافت رزومه عمومی (بدون نیاز به login)
+
   async findPublic(id: number): Promise<ResumeResponseDto> {
     const resume = await this.resumeModel.findOne({
       where: { id, isPublic: true, status: 'published' },
@@ -144,7 +141,9 @@ export class ResumesService {
     return new ResumeResponseDto(resume.toJSON());
   }
 
-  // تغییر وضعیت رزومه
+
+
+  
   async changeStatus(
     id: number,
     userId: number,

@@ -1,4 +1,3 @@
-// src/resumes/resumes.module.ts
 import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { ResumesService } from './resumes.service';

@@ -1,4 +1,3 @@
-// src/resumes/resume.model.ts
 import {
   Table,
   Column,
