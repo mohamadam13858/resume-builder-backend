@@ -46,11 +46,24 @@ export class UsersService {
         }
     }
 
-    async findByEmail(email: string): Promise<User | null> {
-        return this.userModel.findOne({
+
+    async findByEmail(email: string, includePassword: boolean = true) {
+        if (!email) {
+            return null;
+        }
+
+        const attributes: any[] = ['id', 'email', 'fullName', 'phone', 'createdAt'];
+
+        if (includePassword) {
+            attributes.push('password');
+        }
+
+        const user = await this.userModel.findOne({
             where: { email },
-            attributes: ['id', 'email', 'password', 'fullName', 'phone', 'createdAt', 'updatedAt'],
+            attributes,
         });
+
+        return user; 
     }
 
     async findById(id: number): Promise<Partial<User> | null> {
@@ -111,4 +124,26 @@ export class UsersService {
 
         return users.map(user => user.toJSON());
     }
+
+    async updatePassword(userId: number, newPassword: string) {
+        const user = await this.userModel.findByPk(userId);
+
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        await user.update({ password: newPassword });
+        return user.toJSON();
+    }
+
+    // async update(userId: number, updateData: any) {
+    //     const user = await this.userModel.findByPk(userId);
+
+    //     if (!user) {
+    //         throw new Error('User not found');
+    //     }
+
+    //     await user.update(updateData);
+    //     return user.toJSON();
+    // }
 }

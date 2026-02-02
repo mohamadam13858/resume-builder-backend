@@ -1,57 +1,218 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+// src/auth/auth.service.ts
+import {
+  Injectable,
+  UnauthorizedException,
+  ConflictException,
+  BadRequestException
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { LoginUserDto } from '../users/dto/login-user.dto';
 import { CreateUserDto } from '../users/dto/create-user.dto';
-import { UserResponseDto } from 'src/users/dto/user.response.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
-  ) {}
+  ) { }
 
-  async validateUser(email: string, password: string): Promise<any> {
-    const user = await this.usersService.validateUser(email, password);
-    
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-    
-    return user;
-  }
-
-  async login(loginUserDto: LoginUserDto) {
-    const user = await this.validateUser(loginUserDto.email, loginUserDto.password);
-    
-    if (!user || !user.id) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-    
-    const payload = { 
-      email: user.email, 
-      sub: user.id,
-      fullName: user.fullName,
-    };
-    
-    return {
-      access_token: this.jwtService.sign(payload),
-      user: new UserResponseDto(user),
-    };
-  }
 
   async register(createUserDto: CreateUserDto) {
-    const user = await this.usersService.create(createUserDto);
-    const payload = { 
-      email: user.email, 
-      sub: user.id,
-      fullName: user.fullName,
-    };
+    try {
+      const user = await this.usersService.create(createUserDto);
+      const tokens = await this.generateTokens(user);
+
+      return {
+        ...tokens,
+        user: {
+          id: user.id,
+          email: user.email,
+          fullName: user.fullName,
+          phone: user.phone,
+        },
+      };
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        throw new ConflictException('این ایمیل قبلاً ثبت شده است');
+      }
+      throw error;
+    }
+  }
+
+
+
+async login(loginUserDto: LoginUserDto) {
+  try {
+    console.log('Login attempt for:', loginUserDto.email);
+    
+    if (!loginUserDto?.email?.trim() || !loginUserDto?.password?.trim()) {
+      throw new BadRequestException('ایمیل و رمز عبور الزامی هستند');
+    }
+
+    const email = loginUserDto.email.trim();
+    const password = loginUserDto.password.trim();
+
+    const user = await this.usersService.findByEmail(email, true);
+    
+    if (!user) {
+      console.log('User not found');
+      throw new UnauthorizedException('ایمیل یا رمز عبور نادرست است');
+    }
+
+
+    const hashedPassword = user.get('password');
+    
+    if (!hashedPassword) {
+      console.error('No password in DB for user:', user.id);
+      throw new UnauthorizedException('خطای سیستمی - لطفاً با پشتیبانی تماس بگیرید');
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, hashedPassword);
+    console.log('Password valid:', isPasswordValid);
+
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('ایمیل یا رمز عبور نادرست است');
+    }
+
+    const tokens = await this.generateTokens(user);
     
     return {
-      access_token: this.jwtService.sign(payload),
-      user,
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email, 
+        fullName: user.fullName,
+        phone: user.phone,
+      },
     };
+  } catch (error) {
+    console.error('Login error:', error.message);
+    throw error;
+  }
+}
+  /**
+   * 🔄 تازه‌سازی توکن
+   */
+  async refreshTokens(refreshToken: string) {
+    try {
+      // verify کردن refresh token
+      const payload = this.jwtService.verify(refreshToken, {
+        secret: process.env.JWT_REFRESH_SECRET || 'refresh-secret-key',
+      });
+
+      // پیدا کردن کاربر
+      const user = await this.usersService.findById(payload.sub);
+
+      if (!user) {
+        throw new UnauthorizedException('کاربر یافت نشد');
+      }
+
+      // ساخت توکن‌های جدید
+      const tokens = await this.generateTokens(user);
+
+      return {
+        ...tokens,
+        user: {
+          id: user.id,
+          email: user.email,
+          fullName: user.fullName,
+          phone: user.phone,
+        },
+      };
+    } catch (error) {
+      throw new UnauthorizedException('توکن نامعتبر است');
+    }
+  }
+
+  /**
+   * 🔐 تغییر رمز عبور
+   */
+  async changePassword(userId: number, changePasswordDto: ChangePasswordDto) {
+    // پیدا کردن کاربر
+    const user = await this.usersService.findById(userId);
+
+    if (!user) {
+      throw new UnauthorizedException('کاربر یافت نشد');
+    }
+
+    // بررسی رمز عبور فعلی
+    const isCurrentPasswordValid = await bcrypt.compare(
+      changePasswordDto.currentPassword,
+      user.password,
+    );
+
+    if (!isCurrentPasswordValid) {
+      throw new UnauthorizedException('رمز عبور فعلی نادرست است');
+    }
+
+    // بررسی مطابقت رمزهای جدید
+    if (changePasswordDto.newPassword !== changePasswordDto.confirmPassword) {
+      throw new BadRequestException('رمزهای عبور جدید مطابقت ندارند');
+    }
+
+    // Hash کردن رمز جدید
+    const hashedPassword = await bcrypt.hash(changePasswordDto.newPassword, 10);
+
+    // آپدیت رمز عبور
+    await this.usersService.updatePassword(userId, hashedPassword);
+
+    return { message: 'رمز عبور با موفقیت تغییر یافت' };
+  }
+
+  /**
+   * 👤 دریافت پروفایل کاربر
+   */
+  async getProfile(userId: number) {
+    const user = await this.usersService.findById(userId);
+
+    if (!user) {
+      throw new UnauthorizedException('کاربر یافت نشد');
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      phone: user.phone,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+  }
+
+  /**
+   * 🔧 متدهای کمکی
+   */
+  private async generateTokens(user: any) {
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      fullName: user.fullName,
+    };
+
+    const accessToken = this.jwtService.sign(payload, {
+      expiresIn: '15m',
+      secret: process.env.JWT_SECRET || 'secret-key',
+    });
+
+    const refreshToken = this.jwtService.sign(payload, {
+      expiresIn: '7d',
+      secret: process.env.JWT_REFRESH_SECRET || 'refresh-secret-key',
+    });
+
+    return {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      token_type: 'Bearer',
+      expires_in: 900,
+    };
+  }
+
+  private async updateLastLogin(userId: number) {
+    await this.usersService.update(userId, {
+      lastLoginAt: new Date(),
+    });
   }
 }
