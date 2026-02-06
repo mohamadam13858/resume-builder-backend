@@ -92,10 +92,7 @@ export class AuthController {
     return this.authService.login(loginUserDto);
   }
 
-  /**
-   * 🔄 تازه‌سازی توکن
-   * POST /auth/refresh
-   */
+
   @Post('refresh')
   @UseGuards(RefreshTokenGuard)
   @ApiBearerAuth()
@@ -126,10 +123,7 @@ export class AuthController {
     return this.authService.refreshTokens(req.user.refreshToken);
   }
 
-  /**
-   * 🔐 تغییر رمز عبور
-   * PATCH /auth/change-password
-   */
+
   @Patch('change-password')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -159,10 +153,7 @@ export class AuthController {
     return this.authService.changePassword(req.user.id, changePasswordDto);
   }
 
-  /**
-   * 👤 دریافت پروفایل کاربر
-   * GET /auth/profile
-   */
+
   @Get('profile')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

@@ -1,9 +1,9 @@
-// src/auth/auth.service.ts
 import {
   Injectable,
   UnauthorizedException,
   ConflictException,
-  BadRequestException
+  BadRequestException,
+  NotFoundException
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
@@ -93,24 +93,20 @@ async login(loginUserDto: LoginUserDto) {
     throw error;
   }
 }
-  /**
-   * 🔄 تازه‌سازی توکن
-   */
+
   async refreshTokens(refreshToken: string) {
     try {
-      // verify کردن refresh token
       const payload = this.jwtService.verify(refreshToken, {
         secret: process.env.JWT_REFRESH_SECRET || 'refresh-secret-key',
       });
 
-      // پیدا کردن کاربر
+  
       const user = await this.usersService.findById(payload.sub);
 
       if (!user) {
         throw new UnauthorizedException('کاربر یافت نشد');
       }
 
-      // ساخت توکن‌های جدید
       const tokens = await this.generateTokens(user);
 
       return {
@@ -127,18 +123,16 @@ async login(loginUserDto: LoginUserDto) {
     }
   }
 
-  /**
-   * 🔐 تغییر رمز عبور
-   */
+
   async changePassword(userId: number, changePasswordDto: ChangePasswordDto) {
-    // پیدا کردن کاربر
+
     const user = await this.usersService.findById(userId);
 
     if (!user) {
       throw new UnauthorizedException('کاربر یافت نشد');
     }
 
-    // بررسی رمز عبور فعلی
+
     const isCurrentPasswordValid = await bcrypt.compare(
       changePasswordDto.currentPassword,
       user.password,
@@ -148,28 +142,25 @@ async login(loginUserDto: LoginUserDto) {
       throw new UnauthorizedException('رمز عبور فعلی نادرست است');
     }
 
-    // بررسی مطابقت رمزهای جدید
+  
     if (changePasswordDto.newPassword !== changePasswordDto.confirmPassword) {
       throw new BadRequestException('رمزهای عبور جدید مطابقت ندارند');
     }
 
-    // Hash کردن رمز جدید
+  
     const hashedPassword = await bcrypt.hash(changePasswordDto.newPassword, 10);
 
-    // آپدیت رمز عبور
+  
     await this.usersService.updatePassword(userId, hashedPassword);
 
     return { message: 'رمز عبور با موفقیت تغییر یافت' };
   }
 
-  /**
-   * 👤 دریافت پروفایل کاربر
-   */
   async getProfile(userId: number) {
     const user = await this.usersService.findById(userId);
 
     if (!user) {
-      throw new UnauthorizedException('کاربر یافت نشد');
+      throw new NotFoundException('کاربر یافت نشد');
     }
 
     return {
@@ -182,9 +173,7 @@ async login(loginUserDto: LoginUserDto) {
     };
   }
 
-  /**
-   * 🔧 متدهای کمکی
-   */
+  
   private async generateTokens(user: any) {
     const payload = {
       sub: user.id,
