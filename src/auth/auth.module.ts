@@ -6,9 +6,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
-import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { RefreshTokenGuard } from './guards/refresh-token.guard';
 
 @Module({
   imports: [
@@ -29,14 +27,11 @@ import { RefreshTokenGuard } from './guards/refresh-token.guard';
   providers: [
     AuthService,
     JwtStrategy,
-    JwtRefreshStrategy,
     JwtAuthGuard,
-    RefreshTokenGuard,
   ],
   exports: [
     AuthService,
     JwtAuthGuard,
-    RefreshTokenGuard,
   ],
 })
 export class AuthModule {}

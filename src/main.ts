@@ -9,7 +9,24 @@ async function bootstrap() {
 
   app.use(cookieParser());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.enableCors({ origin: true, credentials: true });
+  app.enableCors({
+    origin: [
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'http://localhost:3001',     
+    ],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'Origin',
+      'X-Requested-With',
+    ],
+    exposedHeaders: ['Authorization', 'Set-Cookie'],
+    // credentials: true,
+    maxAge: 3600,           
+  });
 
   const config = new DocumentBuilder()
     .setTitle('Resume Builder API')

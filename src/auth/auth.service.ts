@@ -44,67 +44,37 @@ export class AuthService {
 
 
 
-async login(loginUserDto: LoginUserDto) {
-  try {
-    console.log('Login attempt for:', loginUserDto.email);
-    
-    if (!loginUserDto?.email?.trim() || !loginUserDto?.password?.trim()) {
-      throw new BadRequestException('ایمیل و رمز عبور الزامی هستند');
-    }
-
-    const email = loginUserDto.email.trim();
-    const password = loginUserDto.password.trim();
-
-    const user = await this.usersService.findByEmail(email, true);
-    
-    if (!user) {
-      console.log('User not found');
-      throw new UnauthorizedException('ایمیل یا رمز عبور نادرست است');
-    }
-
-
-    const hashedPassword = user.get('password');
-    
-    if (!hashedPassword) {
-      console.error('No password in DB for user:', user.id);
-      throw new UnauthorizedException('خطای سیستمی - لطفاً با پشتیبانی تماس بگیرید');
-    }
-
-    const isPasswordValid = await bcrypt.compare(password, hashedPassword);
-    console.log('Password valid:', isPasswordValid);
-
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('ایمیل یا رمز عبور نادرست است');
-    }
-
-    const tokens = await this.generateTokens(user);
-    
-    return {
-      ...tokens,
-      user: {
-        id: user.id,
-        email: user.email, 
-        fullName: user.fullName,
-        phone: user.phone,
-      },
-    };
-  } catch (error) {
-    console.error('Login error:', error.message);
-    throw error;
-  }
-}
-
-  async refreshTokens(refreshToken: string) {
+  async login(loginUserDto: LoginUserDto) {
     try {
-      const payload = this.jwtService.verify(refreshToken, {
-        secret: process.env.JWT_REFRESH_SECRET || 'refresh-secret-key',
-      });
+      console.log('Login attempt for:', loginUserDto.email);
 
-  
-      const user = await this.usersService.findById(payload.sub);
+      if (!loginUserDto?.email?.trim() || !loginUserDto?.password?.trim()) {
+        throw new BadRequestException('ایمیل و رمز عبور الزامی هستند');
+      }
+
+      const email = loginUserDto.email.trim();
+      const password = loginUserDto.password.trim();
+
+      const user = await this.usersService.findByEmail(email, true);
 
       if (!user) {
-        throw new UnauthorizedException('کاربر یافت نشد');
+        console.log('User not found');
+        throw new NotFoundException('ایمیل یا رمز عبور نادرست است');
+      }
+
+
+      const hashedPassword = user.get('password');
+
+      if (!hashedPassword) {
+        console.error('No password in DB for user:', user.id);
+        throw new UnauthorizedException('خطای سیستمی - لطفاً با پشتیبانی تماس بگیرید');
+      }
+
+      const isPasswordValid = await bcrypt.compare(password, hashedPassword);
+      console.log('Password valid:', isPasswordValid);
+
+      if (!isPasswordValid) {
+        throw new NotFoundException('ایمیل یا رمز عبور نادرست است');
       }
 
       const tokens = await this.generateTokens(user);
@@ -119,19 +89,84 @@ async login(loginUserDto: LoginUserDto) {
         },
       };
     } catch (error) {
-      throw new UnauthorizedException('توکن نامعتبر است');
+      console.error('Login error:', error.message);
+      throw error;
+    }
+  }
+
+  async refreshTokens(refreshToken: string) {
+    try {
+      const payload = this.jwtService.verify(refreshToken, {
+        secret: process.env.JWT_REFRESH_SECRET || 'refresh-secret-key',
+      });
+
+      const user = await this.usersService.findById(payload.sub);
+
+      if (!user) {
+        throw new UnauthorizedException('کاربر یافت نشد');
+      }
+
+      const tokens = await this.generateTokens(user , true);
+
+      return {
+        ...tokens,
+        user: {
+          id: user.id,
+          email: user.email,
+          fullName: user.fullName,
+          phone: user.phone,
+        },
+      };
+    } catch (error) {
+      console.error('Refresh token error:', error.message);
+
+      if (error.name === 'TokenExpiredError') {
+        throw new UnauthorizedException('توکن منقضی شده است');
+      } else if (error.name === 'JsonWebTokenError') {
+        throw new UnauthorizedException('توکن نامعتبر است');
+      }
+
+      throw new UnauthorizedException('خطای احراز هویت');
     }
   }
 
 
-  async changePassword(userId: number, changePasswordDto: ChangePasswordDto) {
+async generateTokens(user: any, rotateRefresh = false) {
+  const payload = { sub: user.id, email: user.email, fullName: user.fullName };
 
-    const user = await this.usersService.findById(userId);
+  const accessToken = await this.jwtService.signAsync(payload, { expiresIn: '15m' });
+
+  let refreshToken:null | string = null;
+
+  if (rotateRefresh) {
+    refreshToken = await this.jwtService.signAsync(payload, { expiresIn: '7d' });
+  }
+
+  return {
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    token_type: 'Bearer',
+    expires_in: 900,
+  };
+}
+
+
+
+  async changePassword(userId: number, changePasswordDto: ChangePasswordDto) {
+    if (!changePasswordDto?.currentPassword?.trim() ||
+      !changePasswordDto?.newPassword?.trim() ||
+      !changePasswordDto?.confirmPassword?.trim()) {
+      throw new BadRequestException('همه فیلدهای رمز عبور الزامی هستند');
+    }
+    const user = await this.usersService.findByIdWithPassword(userId);
 
     if (!user) {
-      throw new UnauthorizedException('کاربر یافت نشد');
+      throw new NotFoundException('کاربر یافت نشد');
     }
 
+    if (!user.password) {
+      throw new NotFoundException('این حساب کاربری با رمز عبور ساخته نشده است.');
+    }
 
     const isCurrentPasswordValid = await bcrypt.compare(
       changePasswordDto.currentPassword,
@@ -139,22 +174,31 @@ async login(loginUserDto: LoginUserDto) {
     );
 
     if (!isCurrentPasswordValid) {
-      throw new UnauthorizedException('رمز عبور فعلی نادرست است');
+      throw new NotFoundException('رمز عبور فعلی نادرست است');
     }
 
-  
+
     if (changePasswordDto.newPassword !== changePasswordDto.confirmPassword) {
       throw new BadRequestException('رمزهای عبور جدید مطابقت ندارند');
     }
 
-  
-    const hashedPassword = await bcrypt.hash(changePasswordDto.newPassword, 10);
 
-  
+    if (changePasswordDto.currentPassword === changePasswordDto.newPassword) {
+      throw new BadRequestException('رمز عبور جدید باید با رمز عبور فعلی متفاوت باشد');
+    }
+
+
+    const hashedPassword = await bcrypt.hash(changePasswordDto.newPassword, 10);
     await this.usersService.updatePassword(userId, hashedPassword);
 
     return { message: 'رمز عبور با موفقیت تغییر یافت' };
   }
+
+
+
+
+
+
 
   async getProfile(userId: number) {
     const user = await this.usersService.findById(userId);
@@ -173,31 +217,31 @@ async login(loginUserDto: LoginUserDto) {
     };
   }
 
-  
-  private async generateTokens(user: any) {
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      fullName: user.fullName,
-    };
 
-    const accessToken = this.jwtService.sign(payload, {
-      expiresIn: '15m',
-      secret: process.env.JWT_SECRET || 'secret-key',
-    });
+  // private async generateTokens(user: any) {
+  //   const payload = {
+  //     sub: user.id,
+  //     email: user.email,
+  //     fullName: user.fullName,
+  //   };
 
-    const refreshToken = this.jwtService.sign(payload, {
-      expiresIn: '7d',
-      secret: process.env.JWT_REFRESH_SECRET || 'refresh-secret-key',
-    });
+  //   const accessToken = this.jwtService.sign(payload, {
+  //     expiresIn: '15m',
+  //     secret: process.env.JWT_SECRET || 'secret-key',
+  //   });
 
-    return {
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      token_type: 'Bearer',
-      expires_in: 900,
-    };
-  }
+  //   const refreshToken = this.jwtService.sign(payload, {
+  //     expiresIn: '7d',
+  //     secret: process.env.JWT_REFRESH_SECRET || 'refresh-secret-key',
+  //   });
+
+  //   return {
+  //     access_token: accessToken,
+  //     refresh_token: refreshToken,
+  //     token_type: 'Bearer',
+  //     expires_in: 900,
+  //   };
+  // }
 
   private async updateLastLogin(userId: number) {
     await this.usersService.update(userId, {

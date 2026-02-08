@@ -63,7 +63,7 @@ export class UsersService {
             attributes,
         });
 
-        return user; 
+        return user;
     }
 
     async findById(id: number): Promise<Partial<User> | null> {
@@ -75,6 +75,17 @@ export class UsersService {
 
 
         return user.toJSON();
+    }
+
+
+    async findByIdWithPassword(id: number) {
+        const user = await this.userModel.findByPk(id, {
+            attributes: ['id', 'email', 'password', 'fullName', 'phone', 'createdAt'],
+        });
+
+        if (!user) return null;
+        const userPlain = user.get({ plain: true });
+        return userPlain;
     }
 
     async validateUser(email: string, password: string): Promise<Partial<User> | null> {
