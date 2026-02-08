@@ -4,31 +4,29 @@ import { Resume } from './resume.model';
 import { CreateResumeDto } from './dto/create-resume.dto';
 import { UpdateResumeDto } from './dto/update-resume.dto';
 import { ResumeResponseDto } from './dto/resume-response.dto';
-import { Op } from 'sequelize';
+import { Op, Sequelize } from 'sequelize';
 
 @Injectable()
 export class ResumesService {
   constructor(
     @InjectModel(Resume)
     private resumeModel: typeof Resume,
-  ) {}
+  ) { }
 
-
-  async create(userId: number, createResumeDto: CreateResumeDto): Promise<ResumeResponseDto> {
-    const resumeData = {
+  async create(userId: number, dto: CreateResumeDto): Promise<ResumeResponseDto> {
+    const resume = await this.resumeModel.create({
       userId,
-      title: createResumeDto.title,
-      content: createResumeDto.content || {},
-      status: createResumeDto.status || 'draft',
-      templateId: createResumeDto.templateId || null,
-      isPublic: createResumeDto.isPublic || false,
-    };
+      title: dto.title,
+      content: dto.content ?? {},
+      status: dto.status ?? 'draft',
+      templateId: dto.templateId,     
+      isPublic: dto.isPublic ?? false,
+    } as any);
 
-    const resume = await this.resumeModel.create(resumeData as any);
     return new ResumeResponseDto(resume.toJSON());
   }
 
-  
+
   async findAll(
     userId: number,
     options?: {
@@ -94,7 +92,7 @@ export class ResumesService {
       throw new NotFoundException(`Resume with ID ${id} not found`);
     }
 
-    await resume.update(updateResumeDto as any);
+    await resume.update(updateResumeDto);
 
     return new ResumeResponseDto(resume.toJSON());
   }
@@ -112,20 +110,23 @@ export class ResumesService {
     await resume.destroy();
   }
 
-
   async search(userId: number, query: string): Promise<ResumeResponseDto[]> {
     const resumes = await this.resumeModel.findAll({
       where: {
         userId,
         [Op.or]: [
-          { title: { [Op.like]: `%${query}%` } },
+          { title: { [Op.iLike]: `%${query}%` } },
+          Sequelize.where(
+            Sequelize.cast(Sequelize.col('content'), 'text'),
+            { [Op.iLike]: `%${query}%` }
+          ),
         ],
       },
+      limit: 20,
     });
 
-    return resumes.map(resume => new ResumeResponseDto(resume.toJSON()));
+    return resumes.map((r) => new ResumeResponseDto(r.toJSON()));
   }
-
 
   async findPublic(id: number): Promise<ResumeResponseDto> {
     const resume = await this.resumeModel.findOne({
@@ -143,7 +144,7 @@ export class ResumesService {
 
 
 
-  
+
   async changeStatus(
     id: number,
     userId: number,

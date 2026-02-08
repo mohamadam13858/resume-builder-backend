@@ -58,7 +58,7 @@ export class CreateResumeDto {
   })
   @IsOptional()
   @IsString()
-  templateId?: string;
+  templateId?: string ;
 
   @ApiPropertyOptional({
     description: 'Whether the resume is publicly accessible',
