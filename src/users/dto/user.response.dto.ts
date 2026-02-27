@@ -1,36 +1,51 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { Expose } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ResumeResponseDto } from '../../resumes/dto/resume-response.dto';
 
 export class UserResponseDto {
-  @ApiProperty({ example: 1 })
-  @Expose()
+  @ApiProperty()
   id: number;
 
-  @ApiProperty({ example: 'user@example.com' })
-  @Expose()
+  @ApiProperty()
   email: string;
 
-  @ApiProperty({ example: 'John Doe' })
-  @Expose()
+  @ApiProperty()
   fullName: string;
 
-  @ApiProperty({ example: '+1234567890', required: false })
-  @Expose()
+  @ApiPropertyOptional()
   phone?: string;
 
-  @ApiProperty({ example: 'https://example.com/avatar.jpg', required: false })
-  @Expose()
+  @ApiPropertyOptional()
+  bio?: string;
+
+  @ApiPropertyOptional()
   profileImage?: string;
 
-  @ApiProperty({ example: false })
-  @Expose()
-  isVerified: boolean;
-
-  @ApiProperty({ example: '2024-01-15T10:30:00.000Z' })
-  @Expose()
+  @ApiProperty()
   createdAt: Date;
+
+  @ApiPropertyOptional()              
+  updatedAt?: Date;
+
+  @ApiPropertyOptional({ type: [ResumeResponseDto] })
+  resumes?: ResumeResponseDto[];
 
   constructor(partial: Partial<UserResponseDto>) {
     Object.assign(this, partial);
+  }
+
+  static fromUser(user: any): UserResponseDto {
+    const values = user.toJSON ? user.toJSON() : { ...user };
+
+    return new UserResponseDto({
+      id: values.id,
+      email: values.email,
+      fullName: values.fullName,
+      phone: values.phone,
+      bio: values.bio,
+      profileImage: values.profileImage,
+      createdAt: values.createdAt,
+      updatedAt: values.updatedAt,          
+      resumes: values.resumes?.map((r: any) => new ResumeResponseDto(r)),
+    });
   }
 }

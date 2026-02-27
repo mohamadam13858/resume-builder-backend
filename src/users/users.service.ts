@@ -1,4 +1,9 @@
-import { Injectable, ConflictException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { User } from './user.model';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -7,154 +12,112 @@ import { UserResponseDto } from './dto/user.response.dto';
 
 @Injectable()
 export class UsersService {
-    constructor(
-        @InjectModel(User)
-        private userModel: typeof User,
-    ) { }
+  constructor(
+    @InjectModel(User)
+    private userModel: typeof User,
+  ) {}
 
-    async create(createUserDto: CreateUserDto): Promise<UserResponseDto> {
-        try {
-            const existingUser = await this.userModel.findOne({
-                where: { email: createUserDto.email },
-            });
+  async create(createUserDto: CreateUserDto): Promise<UserResponseDto> {
+    try {
+      const existingUser = await this.userModel.findOne({
+        where: { email: createUserDto.email },
+      });
 
-            if (existingUser) {
-                throw new ConflictException('Email already exists');
-            }
+      if (existingUser) {
+        throw new ConflictException('Email already exists');
+      }
 
+      const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
-            const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+      const user = await this.userModel.create({
+        email: createUserDto.email,
+        password: hashedPassword,
+        fullName: createUserDto.fullName,
+        phone: createUserDto.phone ?? undefined,
+        bio: createUserDto.bio ?? undefined,
+        profileImage: createUserDto.profileImage ?? undefined,
+      } as any);
 
-            const user = await this.userModel.create({
-                email: createUserDto.email,
-                password: hashedPassword,
-                fullName: createUserDto.fullName,
-                phone: createUserDto.phone || null,
-            } as any);
+      return UserResponseDto.fromUser(user);
+    } catch (error) {
+      if (error instanceof ConflictException) throw error;
+      console.error('Error creating user:', error);
+      throw new InternalServerErrorException('Failed to create user');
+    }
+  }
 
+  async findById(id: number, withResumes = false): Promise<UserResponseDto | null> {
+    const options: any = {
+      attributes: { exclude: ['password'] },
+    };
 
-            const userJson = user.toJSON();
-            delete userJson.password;
-
-            return new UserResponseDto(userJson);
-        } catch (error) {
-            if (error instanceof ConflictException) {
-                throw error;
-            }
-            console.error('Error creating user:', error);
-            throw new InternalServerErrorException('Failed to create user');
-        }
+    if (withResumes) {
+      options.include = [{ model: this.userModel.associations.resumes?.target }];
     }
 
+    const user = await this.userModel.findByPk(id, options);
+    if (!user) return null;
 
-    async findByEmail(email: string, includePassword: boolean = true) {
-        if (!email) {
-            return null;
-        }
+    return UserResponseDto.fromUser(user);
+  }
 
-        const attributes: any[] = ['id', 'email', 'fullName', 'phone', 'createdAt'];
+  async findByIdWithPassword(id: number): Promise<User | null> {
+    return this.userModel.findByPk(id, {
+      attributes: ['id', 'email', 'password', 'fullName', 'phone', 'createdAt'],
+      raw: true
+    });
+  }
 
-        if (includePassword) {
-            attributes.push('password');
-        }
+  async findByEmail(email: string, includePassword = false): Promise<User | null> {
+    const attributes = ['id', 'email', 'fullName', 'phone', 'createdAt'];
 
-        const user = await this.userModel.findOne({
-            where: { email },
-            attributes,
-        });
+    if (includePassword) attributes.push('password');
 
-        return user;
+    return this.userModel.findOne({ where: { email }, attributes });
+  }
+
+  async validateUser(email: string, password: string): Promise<UserResponseDto | null> {
+    const user = await this.findByEmail(email, true);
+    if (!user || !user.password) return null;
+
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) return null;
+
+    return UserResponseDto.fromUser(user);
+  }
+
+  async findAll(): Promise<UserResponseDto[]> {
+    const users = await this.userModel.findAll({
+      attributes: { exclude: ['password'] },
+      order: [['createdAt', 'DESC']],
+    });
+    return users.map(u => UserResponseDto.fromUser(u));
+  }
+
+  async update(
+    id: number,
+    updateData: Partial<CreateUserDto & { bio?: string; profileImage?: string }>,
+  ): Promise<UserResponseDto> {
+    const user = await this.userModel.findByPk(id);
+    if (!user) throw new NotFoundException('User not found');
+
+    if (updateData.password) {
+      updateData.password = await bcrypt.hash(updateData.password, 10);
     }
 
-    async findById(id: number): Promise<Partial<User> | null> {
-        const user = await this.userModel.findByPk(id, {
-            attributes: { exclude: ['password'] },
-        });
+    await user.update(updateData);
 
-        if (!user) return null;
+    const refreshed = await this.findById(id);
+    if (!refreshed) throw new InternalServerErrorException();
 
+    return refreshed;
+  }
 
-        return user.toJSON();
-    }
+  async updatePassword(userId: number, newPassword: string): Promise<void> {
+    const user = await this.userModel.findByPk(userId);
+    if (!user) throw new NotFoundException('User not found');
 
-
-    async findByIdWithPassword(id: number) {
-        const user = await this.userModel.findByPk(id, {
-            attributes: ['id', 'email', 'password', 'fullName', 'phone', 'createdAt'],
-        });
-
-        if (!user) return null;
-        const userPlain = user.get({ plain: true });
-        return userPlain;
-    }
-
-    async validateUser(email: string, password: string): Promise<Partial<User> | null> {
-        const user = await this.findByEmail(email);
-
-        if (!user || !user.password) {
-            return null;
-        }
-
-        const isValidPassword = await bcrypt.compare(password, user.password);
-
-        if (!isValidPassword) {
-            return null;
-        }
-
-
-        const { password: _, ...userWithoutPassword } = user.toJSON();
-        return userWithoutPassword;
-    }
-
-    async update(id: number, updateData: Partial<User>): Promise<UserResponseDto> {
-        const user = await this.userModel.findByPk(id);
-
-        if (!user) {
-            throw new NotFoundException('User not found');
-        }
-
-
-        if (updateData.password) {
-            updateData.password = await bcrypt.hash(updateData.password, 10);
-        }
-
-        await user.update(updateData as any);
-
-        const userJson = user.toJSON();
-        delete userJson.password;
-
-        return new UserResponseDto(userJson);
-    }
-
-
-    async findAll(): Promise<Partial<User>[]> {
-        const users = await this.userModel.findAll({
-            attributes: { exclude: ['password'] },
-            order: [['created_at', 'DESC']],
-        });
-
-        return users.map(user => user.toJSON());
-    }
-
-    async updatePassword(userId: number, newPassword: string) {
-        const user = await this.userModel.findByPk(userId);
-
-        if (!user) {
-            throw new Error('User not found');
-        }
-
-        await user.update({ password: newPassword });
-        return user.toJSON();
-    }
-
-    // async update(userId: number, updateData: any) {
-    //     const user = await this.userModel.findByPk(userId);
-
-    //     if (!user) {
-    //         throw new Error('User not found');
-    //     }
-
-    //     await user.update(updateData);
-    //     return user.toJSON();
-    // }
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await user.update({ password: hashed });
+  }
 }

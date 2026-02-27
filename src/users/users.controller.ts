@@ -1,45 +1,72 @@
-import { Controller, Get, Param, UseGuards, NotFoundException } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  UseGuards,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UserResponseDto } from './dto/user.response.dto';
-
+import { GetUser } from '../auth/decorators/get-user.decorator';
+import type { CurrentUser } from '../auth/types/current-user.interface';
 
 @ApiTags('users')
 @ApiBearerAuth('JWT-auth')
-@Controller('users')
 @UseGuards(JwtAuthGuard)
+@Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Get(':id')
-  @ApiOperation({ summary: 'Get user by ID' })
-  @ApiParam({ name: 'id', description: 'User ID', type: Number, example: 1 })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'User found',
-    type: UserResponseDto,
-  })
-  @ApiResponse({ status: 404, description: 'User not found' })
-  async findOne(@Param('id') id: string): Promise<UserResponseDto> {
-    const user = await this.usersService.findById(+id);
-    
+
+  @Get('me')
+  @ApiOperation({ summary: 'Get current authenticated user with their resumes' })
+  @ApiResponse({ status: 200, type: UserResponseDto })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getMe(@GetUser() currentUser: CurrentUser): Promise<UserResponseDto> {
+    const user = await this.usersService.findById(currentUser.id, true); // true = with resumes
+
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    return new UserResponseDto(user as any);
+    return user;
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Get user by ID (resumes visible only to the owner)',
+  })
+  @ApiParam({ name: 'id', type: Number, example: 1 })
+  @ApiResponse({ status: 200, type: UserResponseDto })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() currentUser: CurrentUser,
+  ): Promise<UserResponseDto> {
+    const withResumes = currentUser.id === id;
+
+    const user = await this.usersService.findById(id, withResumes);
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all users (for admin)' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'List of users',
-    type: [UserResponseDto],
-  })
+  @ApiOperation({ summary: 'Get list of all users (admin only)' })
+  @ApiResponse({ status: 200, type: [UserResponseDto] })
   async findAll(): Promise<UserResponseDto[]> {
-    const users = await this.usersService.findAll();
-    return users.map(user => new UserResponseDto(user as any));
+    return this.usersService.findAll();
   }
 }

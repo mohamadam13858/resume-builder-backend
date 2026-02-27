@@ -3,9 +3,10 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
-  NotFoundException
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
 import { LoginUserDto } from '../users/dto/login-user.dto';
 import { CreateUserDto } from '../users/dto/create-user.dto';
@@ -14,9 +15,10 @@ import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
-  constructor(
+  constructor(  
     private usersService: UsersService,
     private jwtService: JwtService,
+    private configService: ConfigService,
   ) { }
 
 
@@ -25,8 +27,13 @@ export class AuthService {
       const user = await this.usersService.create(createUserDto);
       const tokens = await this.generateTokens(user);
 
+      await this.updateLastLogin(user.id);
+
       return {
-        ...tokens,
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        token_type: 'Bearer',
+        expires_in: tokens.expires_in,
         user: {
           id: user.id,
           email: user.email,
@@ -43,11 +50,8 @@ export class AuthService {
   }
 
 
-
   async login(loginUserDto: LoginUserDto) {
     try {
-      console.log('Login attempt for:', loginUserDto.email);
-
       if (!loginUserDto?.email?.trim() || !loginUserDto?.password?.trim()) {
         throw new BadRequestException('ایمیل و رمز عبور الزامی هستند');
       }
@@ -56,22 +60,18 @@ export class AuthService {
       const password = loginUserDto.password.trim();
 
       const user = await this.usersService.findByEmail(email, true);
-
+     console.log(user)
       if (!user) {
-        console.log('User not found');
         throw new NotFoundException('ایمیل یا رمز عبور نادرست است');
       }
-
 
       const hashedPassword = user.get('password');
 
       if (!hashedPassword) {
-        console.error('No password in DB for user:', user.id);
-        throw new UnauthorizedException('خطای سیستمی - لطفاً با پشتیبانی تماس بگیرید');
+        throw new BadRequestException('خطای سیستمی - لطفاً با پشتیبانی تماس بگیرید');
       }
 
       const isPasswordValid = await bcrypt.compare(password, hashedPassword);
-      console.log('Password valid:', isPasswordValid);
 
       if (!isPasswordValid) {
         throw new NotFoundException('ایمیل یا رمز عبور نادرست است');
@@ -79,8 +79,13 @@ export class AuthService {
 
       const tokens = await this.generateTokens(user);
 
+      await this.updateLastLogin(user.id);
+
       return {
-        ...tokens,
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        token_type: 'Bearer',
+        expires_in: tokens.expires_in,
         user: {
           id: user.id,
           email: user.email,
@@ -97,7 +102,7 @@ export class AuthService {
   async refreshTokens(refreshToken: string) {
     try {
       const payload = this.jwtService.verify(refreshToken, {
-        secret: process.env.JWT_REFRESH_SECRET || 'refresh-secret-key',
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET') || 'refresh-secret-key',
       });
 
       const user = await this.usersService.findById(payload.sub);
@@ -106,10 +111,15 @@ export class AuthService {
         throw new UnauthorizedException('کاربر یافت نشد');
       }
 
-      const tokens = await this.generateTokens(user , true);
+      const tokens = await this.generateTokens(user);
+
+      await this.updateLastLogin(user.id);
 
       return {
-        ...tokens,
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        token_type: 'Bearer',
+        expires_in: tokens.expires_in,
         user: {
           id: user.id,
           email: user.email,
@@ -122,7 +132,8 @@ export class AuthService {
 
       if (error.name === 'TokenExpiredError') {
         throw new UnauthorizedException('توکن منقضی شده است');
-      } else if (error.name === 'JsonWebTokenError') {
+      }
+      if (error.name === 'JsonWebTokenError') {
         throw new UnauthorizedException('توکن نامعتبر است');
       }
 
@@ -131,34 +142,44 @@ export class AuthService {
   }
 
 
-async generateTokens(user: any, rotateRefresh = false) {
-  const payload = { sub: user.id, email: user.email, fullName: user.fullName };
+  private async generateTokens(user: any) {
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      // role: user.role,
+    };
 
-  const accessToken = await this.jwtService.signAsync(payload, { expiresIn: '15m' });
+    const accessToken = await this.jwtService.signAsync(payload, {
+      secret: this.configService.get<string>('JWT_SECRET') || 'secret-key',
+      expiresIn: '15m',
+    });
 
-  let refreshToken:null | string = null;
+    const refreshToken = await this.jwtService.signAsync(payload, {
+      secret: this.configService.get<string>('JWT_REFRESH_SECRET') || 'refresh-secret-key',
+      expiresIn: '7d',
+    });
 
-  if (rotateRefresh) {
-    refreshToken = await this.jwtService.signAsync(payload, { expiresIn: '7d' });
+    return {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      token_type: 'Bearer',
+      expires_in: 900,
+    };
   }
-
-  return {
-    access_token: accessToken,
-    refresh_token: refreshToken,
-    token_type: 'Bearer',
-    expires_in: 900,
-  };
-}
-
 
 
   async changePassword(userId: number, changePasswordDto: ChangePasswordDto) {
-    if (!changePasswordDto?.currentPassword?.trim() ||
+    if (
+      !changePasswordDto?.currentPassword?.trim() ||
       !changePasswordDto?.newPassword?.trim() ||
-      !changePasswordDto?.confirmPassword?.trim()) {
+      !changePasswordDto?.confirmPassword?.trim()
+    ) {
       throw new BadRequestException('همه فیلدهای رمز عبور الزامی هستند');
     }
+
     const user = await this.usersService.findByIdWithPassword(userId);
+    console.log(user)
 
     if (!user) {
       throw new NotFoundException('کاربر یافت نشد');
@@ -174,19 +195,16 @@ async generateTokens(user: any, rotateRefresh = false) {
     );
 
     if (!isCurrentPasswordValid) {
-      throw new NotFoundException('رمز عبور فعلی نادرست است');
+      throw new UnauthorizedException('رمز عبور فعلی نادرست است');
     }
-
 
     if (changePasswordDto.newPassword !== changePasswordDto.confirmPassword) {
       throw new BadRequestException('رمزهای عبور جدید مطابقت ندارند');
     }
 
-
     if (changePasswordDto.currentPassword === changePasswordDto.newPassword) {
       throw new BadRequestException('رمز عبور جدید باید با رمز عبور فعلی متفاوت باشد');
     }
-
 
     const hashedPassword = await bcrypt.hash(changePasswordDto.newPassword, 10);
     await this.usersService.updatePassword(userId, hashedPassword);
@@ -195,57 +213,26 @@ async generateTokens(user: any, rotateRefresh = false) {
   }
 
 
-
-
-
-
-
   async getProfile(userId: number) {
-    const user = await this.usersService.findById(userId);
-
-    if (!user) {
+    const userDto = await this.usersService.findById(userId);  
+    if (!userDto) {
       throw new NotFoundException('کاربر یافت نشد');
     }
 
     return {
-      id: user.id,
-      email: user.email,
-      fullName: user.fullName,
-      phone: user.phone,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
+      id: userDto.id,
+      email: userDto.email,
+      fullName: userDto.fullName,
+      phone: userDto.phone,
+      createdAt: userDto.createdAt,
+      updatedAt: userDto.updatedAt ?? null,   
     };
   }
 
 
-  // private async generateTokens(user: any) {
-  //   const payload = {
-  //     sub: user.id,
-  //     email: user.email,
-  //     fullName: user.fullName,
-  //   };
-
-  //   const accessToken = this.jwtService.sign(payload, {
-  //     expiresIn: '15m',
-  //     secret: process.env.JWT_SECRET || 'secret-key',
-  //   });
-
-  //   const refreshToken = this.jwtService.sign(payload, {
-  //     expiresIn: '7d',
-  //     secret: process.env.JWT_REFRESH_SECRET || 'refresh-secret-key',
-  //   });
-
-  //   return {
-  //     access_token: accessToken,
-  //     refresh_token: refreshToken,
-  //     token_type: 'Bearer',
-  //     expires_in: 900,
-  //   };
-  // }
-
   private async updateLastLogin(userId: number) {
     await this.usersService.update(userId, {
       lastLoginAt: new Date(),
-    });
+    } as any);
   }
 }

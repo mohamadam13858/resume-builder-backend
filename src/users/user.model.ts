@@ -1,5 +1,3 @@
-
-// src/users/user.model.ts - نسخه اصلاح شده
 import {
   Table,
   Column,
@@ -18,73 +16,81 @@ import { Resume } from '../resumes/resume.model';
   timestamps: true,
   underscored: true,
 })
-export class User extends Model {
+export class User extends Model<User> {
+
+  // @PrimaryKey
+  // @AutoIncrement
+  // @Column(DataType.INTEGER)
+  // id!: number;
+
   @Column({
     type: DataType.STRING(255),
     unique: true,
     allowNull: false,
     validate: { isEmail: true },
   })
-  declare email: string; // 👈 declare
+  email!: string;
 
   @Column({
     type: DataType.STRING(255),
     allowNull: false,
   })
-  declare password: string; // 👈 declare
+  password!: string;
 
   @Column({
     type: DataType.STRING(100),
     allowNull: false,
     field: 'full_name',
   })
-  declare fullName: string; // 👈 declare
+  fullName!: string;
 
   @Column({
     type: DataType.STRING(20),
     allowNull: true,
     field: 'phone',
   })
-  declare phone?: string; // 👈 declare
+  phone?: string;
 
   @Column({
     type: DataType.TEXT,
     allowNull: true,
   })
-  declare bio?: string; // 👈 declare
+  bio?: string;
 
   @Column({
     type: DataType.STRING(500),
     allowNull: true,
     field: 'profile_image',
   })
-  declare profileImage?: string; // 👈 declare
+  profileImage?: string;
 
   @Column({
     type: DataType.DATE,
     allowNull: true,
     field: 'last_login_at',
   })
-  declare lastLoginAt?: Date;
+  lastLoginAt?: Date;
 
-  @HasMany(() => Resume)
-  declare resumes: Resume[]; // 👈 declare
+  @HasMany(() => Resume, { onDelete: 'CASCADE' })
+  resumes!: Resume[];
 
+  // @CreatedAt
+  // createdAt!: Date;
 
-  // متدهای instance
-  async comparePassword(password: string): Promise<boolean> {
+  // @UpdatedAt
+  // updatedAt!: Date;
+
+  async comparePassword(candidatePassword: string): Promise<boolean> {
     const bcrypt = await import('bcrypt');
-    // 🔴 مهم: از get() استفاده کن نه property مستقیم
-    const hashedPassword = this.get('password');
-    return bcrypt.compare(password, hashedPassword);
+    return bcrypt.compare(candidatePassword, this.password);
   }
+
 
   toJSON() {
-    const values = Object.assign({}, this.get());
-    delete values.password;
-    return values;
+    const values = { ...this.get({ plain: true }) };
+
+    const { password, ...rest } = values;
+
+    return rest;
   }
 }
-
-
-

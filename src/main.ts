@@ -13,7 +13,9 @@ async function bootstrap() {
     origin: [
       'http://localhost:3000',
       'http://127.0.0.1:3000',
-      'http://localhost:3001',     
+      'http://localhost:3001',
+      'https://your-production-domain.com', 
+      'https://*.your-domain.com',
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
@@ -24,8 +26,8 @@ async function bootstrap() {
       'X-Requested-With',
     ],
     exposedHeaders: ['Authorization', 'Set-Cookie'],
-    // credentials: true,
-    maxAge: 3600,           
+    credentials: true,
+    maxAge: 3600,
   });
 
   const config = new DocumentBuilder()

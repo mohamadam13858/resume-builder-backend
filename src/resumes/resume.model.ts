@@ -102,7 +102,7 @@ export interface ResumeContent {
   tableName: 'resumes',
   timestamps: true,
   underscored: true,
-  paranoid: true, 
+  paranoid: true,
 })
 export class Resume extends Model<Resume> {
   // @PrimaryKey
@@ -190,6 +190,13 @@ export class Resume extends Model<Resume> {
   })
   publishedAt?: Date;
 
+  // @ForeignKey(() => User)
+  // @Column({ field: 'user_id' })
+  // userId!: number;
+
+  // @BelongsTo(() => User)
+  // user!: User;
+
   // @CreatedAt
   // @Column({
   //   field: 'created_at',
@@ -209,14 +216,14 @@ export class Resume extends Model<Resume> {
   // })
   // deletedAt?: Date;
 
-  
+
   async markAsViewed(): Promise<void> {
     this.lastViewedAt = new Date();
     this.viewCount += 1;
     await this.save();
   }
 
-  
+
   async publish(): Promise<void> {
     this.status = 'published';
     this.publishedAt = new Date();
